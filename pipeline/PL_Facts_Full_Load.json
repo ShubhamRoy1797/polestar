@@ -1,0 +1,230 @@
+{
+	"name": "PL_Facts_Full_Load",
+	"properties": {
+		"activities": [
+			{
+				"name": "Execute_Full_Load_Fact_Sp",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Sp_Start_Time",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[Fact].[SP_FactFullLoad]",
+					"storedProcedureParameters": {
+						"endDate": {
+							"value": "",
+							"type": "DateTime"
+						},
+						"startDate": {
+							"value": "",
+							"type": "DateTime"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_SQL_Workforce_Insight",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"Database_Name": "People_Lens"
+					}
+				}
+			},
+			{
+				"name": "Sp_Log_On_Success",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Execute_Full_Load_Fact_Sp",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[Audit].[Sp_SpExecutionLog]",
+					"storedProcedureParameters": {
+						"DataFactory_Name": {
+							"value": {
+								"value": "@pipeline().DataFactory",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"End_Time": {
+							"value": {
+								"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+								"type": "Expression"
+							},
+							"type": "DateTime"
+						},
+						"Error": {
+							"value": "NA",
+							"type": "String"
+						},
+						"Pipeline_Name": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Sp_Name": {
+							"value": "[Fact].[SP_FactFullLoad]",
+							"type": "String"
+						},
+						"Sp_Type": {
+							"value": "Fact",
+							"type": "String"
+						},
+						"Start_Time": {
+							"value": {
+								"value": "@variables('Sp_Start_Time')",
+								"type": "Expression"
+							},
+							"type": "DateTime"
+						},
+						"Status": {
+							"value": "Success",
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_SQL_Workforce_Insight",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"Database_Name": "People_Lens"
+					}
+				}
+			},
+			{
+				"name": "Sp_Start_Time",
+				"type": "SetVariable",
+				"dependsOn": [],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Sp_Start_Time",
+					"value": {
+						"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Sp_Log_On_Failure",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Execute_Full_Load_Fact_Sp",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[Audit].[Sp_SpExecutionLog]",
+					"storedProcedureParameters": {
+						"DataFactory_Name": {
+							"value": {
+								"value": "@pipeline().DataFactory",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"End_Time": {
+							"value": {
+								"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+								"type": "Expression"
+							},
+							"type": "DateTime"
+						},
+						"Error": {
+							"value": {
+								"value": "@activity('Execute_Full_Load_Fact_Sp').error.message",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Pipeline_Name": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Sp_Name": {
+							"value": "[Fact].[SP_FactFullLoad]",
+							"type": "String"
+						},
+						"Sp_Type": {
+							"value": "Fact",
+							"type": "String"
+						},
+						"Start_Time": {
+							"value": {
+								"value": "@variables('Sp_Start_Time')",
+								"type": "Expression"
+							},
+							"type": "DateTime"
+						},
+						"Status": {
+							"value": "Failed",
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_SQL_Workforce_Insight",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"Database_Name": "People_Lens"
+					}
+				}
+			}
+		],
+		"variables": {
+			"Sp_Start_Time": {
+				"type": "String"
+			}
+		},
+		"folder": {
+			"name": "PL_Polestar_HR_Analytics/PL_Facts"
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-07-17T09:58:45Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

@@ -1,0 +1,56 @@
+{
+	"name": "DS_Sink_Sql_Polestar",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "LS_SQL_Workforce_Insight",
+			"type": "LinkedServiceReference",
+			"parameters": {
+				"Database_Name": "People_Lens"
+			}
+		},
+		"parameters": {
+			"Schema_Name": {
+				"type": "string"
+			},
+			"Table_Name": {
+				"type": "string"
+			}
+		},
+		"folder": {
+			"name": "DS_Polestar_HR_Analytics"
+		},
+		"annotations": [],
+		"type": "AzureSqlTable",
+		"schema": [
+			{
+				"name": "id",
+				"type": "int",
+				"precision": 10
+			},
+			{
+				"name": "Sp_Type",
+				"type": "nvarchar"
+			},
+			{
+				"name": "Sp_Name",
+				"type": "nvarchar"
+			},
+			{
+				"name": "Is_Active",
+				"type": "int",
+				"precision": 10
+			}
+		],
+		"typeProperties": {
+			"schema": {
+				"value": "@dataset().Schema_Name",
+				"type": "Expression"
+			},
+			"table": {
+				"value": "@dataset().Table_Name",
+				"type": "Expression"
+			}
+		}
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}

@@ -1,0 +1,724 @@
+{
+	"name": "PL_MySQL_to_Staging",
+	"properties": {
+		"activities": [
+			{
+				"name": "Get_All_MySql_Tables_Names",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": "select MySqlTables from audit.mysqltables\n",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_Sink_Sql_Polestar",
+						"type": "DatasetReference",
+						"parameters": {
+							"Schema_Name": "Audit",
+							"Table_Name": "MySqlTables"
+						}
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "ForEach1",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Get_All_MySql_Tables_Names",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Get_All_MySql_Tables_Names').output.value",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "MySql_To_Stg",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Copy_Start_ Time_",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "MySqlSource"
+								},
+								"sink": {
+									"type": "AzureSqlSink",
+									"preCopyScript": {
+										"value": "@{concat('IF EXISTS (SELECT * FROM information_schema.tables WHERE table_schema = ', '''Raw''', ' AND table_name = ', '''', item().MySqlTables, '''', ')\nBEGIN\n    TRUNCATE TABLE Raw.[',item().MySqlTables,']',';',\n'END')\n\n\n}",
+										"type": "Expression"
+									},
+									"writeBehavior": "insert",
+									"sqlWriterUseTableLock": false,
+									"tableOption": "autoCreate",
+									"disableMetricsCollection": false
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"typeConversion": true,
+									"typeConversionSettings": {
+										"allowDataTruncation": true,
+										"treatBooleanAsNumber": false
+									}
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "DS_My_Sql_Server",
+									"type": "DatasetReference",
+									"parameters": {
+										"RawTableName": {
+											"value": "@item().MySqlTables",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "DS_Sink_Sql_Polestar",
+									"type": "DatasetReference",
+									"parameters": {
+										"Schema_Name": "Raw",
+										"Table_Name": {
+											"value": "@item().MySqlTables",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "Src_To_Archive",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "MySql_To_Stg",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "MySqlSource"
+								},
+								"sink": {
+									"type": "DelimitedTextSink",
+									"storeSettings": {
+										"type": "AzureBlobStorageWriteSettings"
+									},
+									"formatSettings": {
+										"type": "DelimitedTextWriteSettings",
+										"quoteAllText": true,
+										"fileExtension": ".txt"
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"typeConversion": true,
+									"typeConversionSettings": {
+										"allowDataTruncation": true,
+										"treatBooleanAsNumber": false
+									}
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "DS_My_Sql_Server",
+									"type": "DatasetReference",
+									"parameters": {
+										"RawTableName": {
+											"value": "@item().MySqlTables",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "DS_Src_To_Archive_OR_Error_Polestar",
+									"type": "DatasetReference",
+									"parameters": {
+										"Folder_Name": {
+											"value": "@concat('Archive/',item().MySqlTables,'/',formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'), 'yyyy'),'/',\nformatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'), 'MM'),'/',\nformatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'), 'dd')\n)",
+											"type": "Expression"
+										},
+										"File_Name": {
+											"value": "@concat(item().MySqlTables,' - ',formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'), 'dd-MM-yyyy T HH:mm:ss'),'.csv')",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "Raw_File_Log_On_Success_",
+							"type": "SqlServerStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Src_To_Archive",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"storedProcedureName": "[Audit].[Sp_RawFileExecutionLog]",
+								"storedProcedureParameters": {
+									"DataFactory_Name": {
+										"value": {
+											"value": "@pipeline().DataFactory",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"End_Time": {
+										"value": {
+											"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+											"type": "Expression"
+										},
+										"type": "DateTime"
+									},
+									"Error": {
+										"value": "NA",
+										"type": "String"
+									},
+									"Pipeline_Name": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Raw_File_Name": {
+										"value": {
+											"value": "@item().MySqlTables",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Start_Time": {
+										"value": {
+											"value": "@variables('Sp_Starts_Time')",
+											"type": "Expression"
+										},
+										"type": "DateTime"
+									},
+									"Status": {
+										"value": "Success",
+										"type": "String"
+									}
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "LS_SQL_Workforce_Insight",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"Database_Name": "People_Lens"
+								}
+							}
+						},
+						{
+							"name": "Src_To_Error",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "MySql_To_Stg",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "MySqlSource"
+								},
+								"sink": {
+									"type": "DelimitedTextSink",
+									"storeSettings": {
+										"type": "AzureBlobStorageWriteSettings"
+									},
+									"formatSettings": {
+										"type": "DelimitedTextWriteSettings",
+										"quoteAllText": true,
+										"fileExtension": ".txt"
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"typeConversion": true,
+									"typeConversionSettings": {
+										"allowDataTruncation": true,
+										"treatBooleanAsNumber": false
+									}
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "DS_My_Sql_Server",
+									"type": "DatasetReference",
+									"parameters": {
+										"RawTableName": {
+											"value": "@item().MySqlTables",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "DS_Src_To_Archive_OR_Error_Polestar",
+									"type": "DatasetReference",
+									"parameters": {
+										"Folder_Name": {
+											"value": "@concat('Error/',formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'), 'dd-MM-yyyy '))",
+											"type": "Expression"
+										},
+										"File_Name": {
+											"value": "@concat(item().MySqlTables,'  ',formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'), 'dd-MM-yyyy T HH:mm:ss'),'.csv')",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "Raw_File_Log_On_Failure_",
+							"type": "SqlServerStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Src_To_Error",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"storedProcedureName": "[Audit].[Sp_RawFileExecutionLog]",
+								"storedProcedureParameters": {
+									"DataFactory_Name": {
+										"value": {
+											"value": "@pipeline().DataFactory",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"End_Time": {
+										"value": {
+											"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+											"type": "Expression"
+										},
+										"type": "DateTime"
+									},
+									"Error": {
+										"value": {
+											"value": "@activity('MySql_To_Stg').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Pipeline_Name": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Raw_File_Name": {
+										"value": {
+											"value": "@item().MySqlTables",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Start_Time": {
+										"value": {
+											"value": "@variables('Sp_Starts_Time')",
+											"type": "Expression"
+										},
+										"type": "DateTime"
+									},
+									"Status": {
+										"value": "Failed",
+										"type": "String"
+									}
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "LS_SQL_Workforce_Insight",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"Database_Name": "People_Lens"
+								}
+							}
+						},
+						{
+							"name": "Copy_Start_ Time_",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "Sp_Starts_Time",
+								"value": {
+									"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "ForEach1_copy1",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Get_All_Stg_Sp_Names",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Get_All_Stg_Sp_Names').output.value",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "Sp_Start_Time_copy1",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "Sp_Starts_Time",
+								"value": {
+									"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Execute_All_Stg_Sp",
+							"type": "SqlServerStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Sp_Start_Time_copy1",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"storedProcedureName": {
+									"value": "@item().Sp_Name",
+									"type": "Expression"
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "LS_SQL_Workforce_Insight",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"Database_Name": "People_Lens"
+								}
+							}
+						},
+						{
+							"name": "Sp_Log_On_Success",
+							"type": "SqlServerStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Execute_All_Stg_Sp",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"storedProcedureName": "[Audit].[Sp_SpExecutionLog]",
+								"storedProcedureParameters": {
+									"DataFactory_Name": {
+										"value": {
+											"value": "@pipeline().DataFactory",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"End_Time": {
+										"value": {
+											"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+											"type": "Expression"
+										},
+										"type": "DateTime"
+									},
+									"Error": {
+										"value": "NA",
+										"type": "String"
+									},
+									"Pipeline_Name": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Sp_Name": {
+										"value": {
+											"value": "@item().Sp_Name",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Sp_Type": {
+										"value": "Stg",
+										"type": "String"
+									},
+									"Start_Time": {
+										"value": {
+											"value": "@variables('Sp_Starts_Time')",
+											"type": "Expression"
+										},
+										"type": "DateTime"
+									},
+									"Status": {
+										"value": "Success",
+										"type": "String"
+									}
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "LS_SQL_Workforce_Insight",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"Database_Name": "People_Lens"
+								}
+							}
+						},
+						{
+							"name": "Sp_Log_On_Failure",
+							"type": "SqlServerStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Execute_All_Stg_Sp",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"storedProcedureName": "[Audit].[Sp_SpExecutionLog]",
+								"storedProcedureParameters": {
+									"DataFactory_Name": {
+										"value": {
+											"value": "@pipeline().DataFactory",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"End_Time": {
+										"value": {
+											"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+											"type": "Expression"
+										},
+										"type": "DateTime"
+									},
+									"Error": {
+										"value": {
+											"value": "@activity('Execute_All_Stg_Sp').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Pipeline_Name": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Sp_Name": {
+										"value": {
+											"value": "@item().Sp_Name",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Sp_Type": {
+										"value": "Stg",
+										"type": "String"
+									},
+									"Start_Time": {
+										"value": {
+											"value": "@variables('Sp_Starts_Time')",
+											"type": "Expression"
+										},
+										"type": "DateTime"
+									},
+									"Status": {
+										"value": "Failed",
+										"type": "String"
+									}
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "LS_SQL_Workforce_Insight",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"Database_Name": "People_Lens"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Get_All_Stg_Sp_Names",
+				"type": "Lookup",
+				"dependsOn": [
+					{
+						"activity": "ForEach1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": "select Sp_Name from [Audit].[AllSpName]\nwhere Sp_Type='Stg' and Is_Active=1 and Level=1",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_Sink_Sql_Polestar",
+						"type": "DatasetReference",
+						"parameters": {
+							"Schema_Name": "Audit",
+							"Table_Name": "AllSpName"
+						}
+					},
+					"firstRowOnly": false
+				}
+			}
+		],
+		"variables": {
+			"Sp_Starts_Time": {
+				"type": "String"
+			}
+		},
+		"folder": {
+			"name": "PL_Polestar_HR_Analytics"
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-07-17T09:58:45Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

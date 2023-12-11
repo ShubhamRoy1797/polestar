@@ -1,0 +1,516 @@
+{
+	"name": "PL_Dimensions",
+	"properties": {
+		"activities": [
+			{
+				"name": "Get_All_Sp_Names",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": "select Sp_Name from [Audit].[AllSpName]\nwhere Sp_Type='Dim' and Is_Active=1",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_Sink_Sql_Polestar",
+						"type": "DatasetReference",
+						"parameters": {
+							"Schema_Name": "Audit",
+							"Table_Name": "AllSpName"
+						}
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "ForEach1",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Get_All_Sp_Names",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Get_All_Sp_Names').output.value",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "If Condition1",
+							"type": "IfCondition",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@equals(item().Sp_Name,'[Dim].[SP_DimEmployeeMasterSCD1]')",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "Sp_Start_Time",
+										"type": "SetVariable",
+										"dependsOn": [],
+										"policy": {
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"variableName": "Sp_Start_Time",
+											"value": {
+												"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+												"type": "Expression"
+											}
+										}
+									},
+									{
+										"name": "Execute_All_Dim_Sp",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "Sp_Start_Time",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": {
+												"value": "@item().Sp_Name",
+												"type": "Expression"
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_SQL_Workforce_Insight",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"Database_Name": "People_Lens"
+											}
+										}
+									},
+									{
+										"name": "Sp_Log_On_Success",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "Execute_All_Dim_Sp",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[Audit].[Sp_SpExecutionLog]",
+											"storedProcedureParameters": {
+												"DataFactory_Name": {
+													"value": {
+														"value": "@pipeline().DataFactory",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"End_Time": {
+													"value": {
+														"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+														"type": "Expression"
+													},
+													"type": "DateTime"
+												},
+												"Error": {
+													"value": "NA",
+													"type": "String"
+												},
+												"Pipeline_Name": {
+													"value": {
+														"value": "@pipeline().Pipeline",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"Sp_Name": {
+													"value": {
+														"value": "@item().Sp_Name",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"Sp_Type": {
+													"value": "Dim",
+													"type": "String"
+												},
+												"Start_Time": {
+													"value": {
+														"value": "@variables('Sp_Start_Time')",
+														"type": "Expression"
+													},
+													"type": "DateTime"
+												},
+												"Status": {
+													"value": "Success",
+													"type": "String"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_SQL_Workforce_Insight",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"Database_Name": "People_Lens"
+											}
+										}
+									},
+									{
+										"name": "Sp_Log_On_Failure",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "Execute_All_Dim_Sp",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[Audit].[Sp_SpExecutionLog]",
+											"storedProcedureParameters": {
+												"DataFactory_Name": {
+													"value": {
+														"value": "@pipeline().DataFactory",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"End_Time": {
+													"value": {
+														"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+														"type": "Expression"
+													},
+													"type": "DateTime"
+												},
+												"Error": {
+													"value": {
+														"value": "@activity('Execute_All_Dim_Sp').error.message",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"Pipeline_Name": {
+													"value": {
+														"value": "@pipeline().Pipeline",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"Sp_Name": {
+													"value": {
+														"value": "@item().Sp_Name",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"Sp_Type": {
+													"value": "Dim",
+													"type": "String"
+												},
+												"Start_Time": {
+													"value": {
+														"value": "@variables('Sp_Start_Time')",
+														"type": "Expression"
+													},
+													"type": "DateTime"
+												},
+												"Status": {
+													"value": "Failed",
+													"type": "String"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_SQL_Workforce_Insight",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"Database_Name": "People_Lens"
+											}
+										}
+									}
+								],
+								"ifTrueActivities": [
+									{
+										"name": "Execute_All_ Dim_Emp_Sp",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "Sp_Start_Time_",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": {
+												"value": "@item().Sp_Name",
+												"type": "Expression"
+											},
+											"storedProcedureParameters": {
+												"rundate": {
+													"value": "2022-08-31",
+													"type": "String"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_SQL_Workforce_Insight",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"Database_Name": "People_Lens"
+											}
+										}
+									},
+									{
+										"name": "Sp_Log_On_ Success",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "Execute_All_ Dim_Emp_Sp",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[Audit].[Sp_SpExecutionLog]",
+											"storedProcedureParameters": {
+												"DataFactory_Name": {
+													"value": {
+														"value": "@pipeline().DataFactory",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"End_Time": {
+													"value": {
+														"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+														"type": "Expression"
+													},
+													"type": "DateTime"
+												},
+												"Error": {
+													"value": "NA",
+													"type": "String"
+												},
+												"Pipeline_Name": {
+													"value": {
+														"value": "@pipeline().Pipeline",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"Sp_Name": {
+													"value": {
+														"value": "@item().Sp_Name",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"Sp_Type": {
+													"value": "Dim",
+													"type": "String"
+												},
+												"Start_Time": {
+													"value": {
+														"value": "@variables('Sp_Start_Time')",
+														"type": "Expression"
+													},
+													"type": "DateTime"
+												},
+												"Status": {
+													"value": "Success",
+													"type": "String"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_SQL_Workforce_Insight",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"Database_Name": "People_Lens"
+											}
+										}
+									},
+									{
+										"name": "Sp_Log_On__Failure",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "Execute_All_ Dim_Emp_Sp",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[Audit].[Sp_SpExecutionLog]",
+											"storedProcedureParameters": {
+												"DataFactory_Name": {
+													"value": {
+														"value": "@pipeline().DataFactory",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"End_Time": {
+													"value": {
+														"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+														"type": "Expression"
+													},
+													"type": "DateTime"
+												},
+												"Error": {
+													"value": {
+														"value": "@activity('Execute_All_ Dim_Emp_Sp').error.message",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"Pipeline_Name": {
+													"value": {
+														"value": "@pipeline().Pipeline",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"Sp_Name": {
+													"value": {
+														"value": "@item().Sp_Name",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"Sp_Type": {
+													"value": "Dim",
+													"type": "String"
+												},
+												"Start_Time": {
+													"value": {
+														"value": "@variables('Sp_Start_Time')",
+														"type": "Expression"
+													},
+													"type": "DateTime"
+												},
+												"Status": {
+													"value": "Failed",
+													"type": "String"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_SQL_Workforce_Insight",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"Database_Name": "People_Lens"
+											}
+										}
+									},
+									{
+										"name": "Sp_Start_Time_",
+										"type": "SetVariable",
+										"dependsOn": [],
+										"policy": {
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"variableName": "Sp_Start_Time",
+											"value": {
+												"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+												"type": "Expression"
+											}
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			}
+		],
+		"variables": {
+			"Sp_Start_Time": {
+				"type": "String"
+			},
+			"dummy": {
+				"type": "String"
+			}
+		},
+		"folder": {
+			"name": "PL_Polestar_HR_Analytics"
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-07-17T09:58:45Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

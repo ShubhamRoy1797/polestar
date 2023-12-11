@@ -1,0 +1,34 @@
+{
+	"name": "DS_Src_ADLS_Polestar",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "LS_ADLS_Workforce_Insight",
+			"type": "LinkedServiceReference"
+		},
+		"parameters": {
+			"Raw_File_Name": {
+				"type": "string"
+			}
+		},
+		"folder": {
+			"name": "DS_Polestar_HR_Analytics"
+		},
+		"annotations": [],
+		"type": "Excel",
+		"typeProperties": {
+			"location": {
+				"type": "AzureBlobStorageLocation",
+				"fileName": {
+					"value": "@dataset().Raw_File_Name",
+					"type": "Expression"
+				},
+				"folderPath": "Current",
+				"container": "workforce"
+			},
+			"sheetIndex": 0,
+			"firstRowAsHeader": true
+		},
+		"schema": []
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}

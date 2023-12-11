@@ -1,0 +1,465 @@
+{
+	"name": "SourceToDatalake",
+	"properties": {
+		"activities": [
+			{
+				"name": "sp_UpdateConfigSettings",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[OperationalTables].[UpdateConfigSettings]",
+					"storedProcedureParameters": {
+						"Date": {
+							"value": {
+								"value": "@pipeline().parameters.FileDate",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_Internal_SQL_server",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DB_Name": "People_Lens"
+					}
+				}
+			},
+			{
+				"name": "LoadFileList_Full",
+				"type": "Lookup",
+				"dependsOn": [
+					{
+						"activity": "sp_UpdateConfigSettings",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": {
+							"value": "@concat('select * from OperationalTables.ConfigTable where IsActive=1 and IsCompleted=0 and LoadType=''Full''')",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "Config_Source_Dataset",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "SQL_LogError_Confg",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "sp_UpdateConfigSettings",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[OperationalTables].[SP_ErrorLogExecutions]",
+					"storedProcedureParameters": {
+						"ErrorDescription": {
+							"value": {
+								"value": "@activity('sp_UpdateConfigSettings').error.message\n\n",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Module": {
+							"value": "VegaHrAnalytics",
+							"type": "String"
+						},
+						"ObjectName": {
+							"value": {
+								"value": "@concat(activity('sp_UpdateConfigSettings').error.target,' - StoredProc - [OperationalTables].[UpdateConfigSettings]')",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineRunID": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Source": {
+							"value": "MySQL",
+							"type": "String"
+						},
+						"WorkSpaceName": {
+							"value": {
+								"value": "@pipeline().DataFactory",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Status": {
+							"value": "Failed",
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_Internal_SQL_server",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DB_Name": "People_Lens"
+					}
+				}
+			},
+			{
+				"name": "LoadFiles",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "LoadFileList_Full",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('LoadFileList_Full').output.value",
+						"type": "Expression"
+					},
+					"batchCount": 50,
+					"activities": [
+						{
+							"name": "Copy_MySQL_to_Datalake",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "MySqlSource"
+								},
+								"sink": {
+									"type": "DelimitedTextSink",
+									"storeSettings": {
+										"type": "AzureBlobStorageWriteSettings"
+									},
+									"formatSettings": {
+										"type": "DelimitedTextWriteSettings",
+										"quoteAllText": true,
+										"fileExtension": ".txt"
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"typeConversion": true,
+									"typeConversionSettings": {
+										"allowDataTruncation": true,
+										"treatBooleanAsNumber": false
+									}
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "DS_My_Sql_Server",
+									"type": "DatasetReference",
+									"parameters": {
+										"RawTableName": {
+											"value": "@concat('select * from ',item().SourceTable,'Where LoadType = ''Full''')\n",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "DS_blob_csv",
+									"type": "DatasetReference",
+									"parameters": {
+										"Container": {
+											"value": "@item().ADLS_Container",
+											"type": "Expression"
+										},
+										"FolderPath": {
+											"value": "@concat(item().ADLS_Container,'/',\nitem().FileName,'/',\nformatDateTime(item().StartDate,'yyyy'),'/',\nformatDateTime(item().StartDate,'MMM'),'/',\nformatDateTime(item().StartDate,'dd'))",
+											"type": "Expression"
+										},
+										"FileName": {
+											"value": "@concat(item().FileName,'.',item().FileType)",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						}
+					]
+				}
+			},
+			{
+				"name": "LoadFileList_Incremental",
+				"type": "Lookup",
+				"dependsOn": [
+					{
+						"activity": "sp_UpdateConfigSettings",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": {
+							"value": "@concat('select * from OperationalTables.ConfigTable where IsActive=1 and IsCompleted=0 and LoadType=''Incremental''')",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "Config_Source_Dataset",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "LoadFiles_copy1",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "LoadFileList_Incremental",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('LoadFileList_Incremental').output.value",
+						"type": "Expression"
+					},
+					"batchCount": 50,
+					"activities": [
+						{
+							"name": "MySQL_to_Datalake_Incremental",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "MySqlSource"
+								},
+								"sink": {
+									"type": "DelimitedTextSink",
+									"storeSettings": {
+										"type": "AzureBlobStorageWriteSettings"
+									},
+									"formatSettings": {
+										"type": "DelimitedTextWriteSettings",
+										"quoteAllText": true,
+										"fileExtension": ".txt"
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"typeConversion": true,
+									"typeConversionSettings": {
+										"allowDataTruncation": true,
+										"treatBooleanAsNumber": false
+									}
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "DS_My_Sql_Server",
+									"type": "DatasetReference",
+									"parameters": {
+										"RawTableName": {
+											"value": "@concat('select * from ',item().SourceTable, 'WHERE ',item().IncrementalField, '>= Cast(', item().StartDate, ' As Date)  And ', item().IncrementalField, '<= Cast(', item().EndDate,'As Date)' )",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "DS_blob_csv",
+									"type": "DatasetReference",
+									"parameters": {
+										"Container": {
+											"value": "@item().ADLS_Container",
+											"type": "Expression"
+										},
+										"FolderPath": {
+											"value": "@concat(item().ADLS_Container,'/',\nitem().FileName,'/',\nformatDateTime(item().StartDate,'yyyy'),'/',\nformatDateTime(item().StartDate,'MMM'),'/',\nformatDateTime(item().StartDate,'dd'))",
+											"type": "Expression"
+										},
+										"FileName": {
+											"value": "@concat(item().FileName,'.',item().FileType)",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						}
+					]
+				}
+			},
+			{
+				"name": "SQL_LogError_PL_SourceToDatalake",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "LoadFiles",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "LoadFiles_copy1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[OperationalTables].[SP_ErrorLogExecutions]",
+					"storedProcedureParameters": {
+						"ErrorDescription": {
+							"value": null,
+							"type": "String"
+						},
+						"Module": {
+							"value": "VegaHrAnalytics",
+							"type": "String"
+						},
+						"ObjectName": {
+							"value": null,
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineRunID": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Source": {
+							"value": "MySQL",
+							"type": "String"
+						},
+						"WorkSpaceName": {
+							"value": {
+								"value": "@pipeline().DataFactory",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Status": {
+							"value": "Success",
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_Internal_SQL_server",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DB_Name": "People_Lens"
+					}
+				}
+			}
+		],
+		"parameters": {
+			"FileDate": {
+				"type": "string",
+				"defaultValue": "1900-01-01"
+			}
+		},
+		"folder": {
+			"name": "People_Lens"
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-10-13T11:39:50Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

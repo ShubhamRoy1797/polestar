@@ -1,0 +1,347 @@
+{
+	"name": "PL_Masters_Full_Load",
+	"properties": {
+		"activities": [
+			{
+				"name": "PL_Staging",
+				"type": "ExecutePipeline",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PL_MySQL_to_Staging",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "PL_Dimension",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "PL_Staging",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PL_Dimensions",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "PL_Fact",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "PL_Dimension",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PL_Facts_Full_Load",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "Pipeline_Log_On_Success",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "PL_Fact",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[Audit].[Sp_PipelineExecutionLog]",
+					"storedProcedureParameters": {
+						"DataFactory_Name": {
+							"value": {
+								"value": "@pipeline().DataFactory",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"End_Time": {
+							"value": {
+								"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+								"type": "Expression"
+							},
+							"type": "DateTime"
+						},
+						"Error": {
+							"value": "NA",
+							"type": "String"
+						},
+						"Pipeline_Name": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Start_Time": {
+							"value": {
+								"value": "@convertTimeZone(pipeline().TriggerTime,'UTC','India Standard Time')\n\n",
+								"type": "Expression"
+							},
+							"type": "DateTime"
+						},
+						"Status": {
+							"value": "Success",
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_SQL_Workforce_Insight",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"Database_Name": "People_Lens"
+					}
+				}
+			},
+			{
+				"name": "Pipeline_Log_On_Failure",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "PL_Fact",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[Audit].[Sp_PipelineExecutionLog]",
+					"storedProcedureParameters": {
+						"DataFactory_Name": {
+							"value": {
+								"value": "@pipeline().DataFactory",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"End_Time": {
+							"value": {
+								"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+								"type": "Expression"
+							},
+							"type": "DateTime"
+						},
+						"Error": {
+							"value": {
+								"value": "@concat('Pipeline PL_Fact Full Load Has been Failed. ',activity('PL_Fact').error.message)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Pipeline_Name": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Start_Time": {
+							"value": {
+								"value": "@convertTimeZone(pipeline().TriggerTime,'UTC','India Standard Time')\n\n",
+								"type": "Expression"
+							},
+							"type": "DateTime"
+						},
+						"Status": {
+							"value": "Failed",
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_SQL_Workforce_Insight",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"Database_Name": "People_Lens"
+					}
+				}
+			},
+			{
+				"name": "Pipeline_Log_On_Failed",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "PL_Dimension",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[Audit].[Sp_PipelineExecutionLog]",
+					"storedProcedureParameters": {
+						"DataFactory_Name": {
+							"value": {
+								"value": "@pipeline().DataFactory",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"End_Time": {
+							"value": {
+								"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+								"type": "Expression"
+							},
+							"type": "DateTime"
+						},
+						"Error": {
+							"value": {
+								"value": "@concat('Pipeline PL_Dimension Has been Failed. ',activity('PL_Dimension').error.message)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Pipeline_Name": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Start_Time": {
+							"value": {
+								"value": "@convertTimeZone(pipeline().TriggerTime,'UTC','India Standard Time')\n\n",
+								"type": "Expression"
+							},
+							"type": "DateTime"
+						},
+						"Status": {
+							"value": "Failed",
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_SQL_Workforce_Insight",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"Database_Name": "People_Lens"
+					}
+				}
+			},
+			{
+				"name": "Pipeline_Log_On_Fail",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "PL_Staging",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[Audit].[Sp_PipelineExecutionLog]",
+					"storedProcedureParameters": {
+						"DataFactory_Name": {
+							"value": {
+								"value": "@pipeline().DataFactory",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"End_Time": {
+							"value": {
+								"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+								"type": "Expression"
+							},
+							"type": "DateTime"
+						},
+						"Error": {
+							"value": {
+								"value": "@concat('Pipeline PL_Staging Has been Failed. ',activity('PL_Staging').error.message)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Pipeline_Name": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Start_Time": {
+							"value": {
+								"value": "@convertTimeZone(pipeline().TriggerTime,'UTC','India Standard Time')\n\n",
+								"type": "Expression"
+							},
+							"type": "DateTime"
+						},
+						"Status": {
+							"value": "Failed",
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_SQL_Workforce_Insight",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"Database_Name": "People_Lens"
+					}
+				}
+			}
+		],
+		"folder": {
+			"name": "PL_Polestar_HR_Analytics"
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-07-17T09:58:46Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

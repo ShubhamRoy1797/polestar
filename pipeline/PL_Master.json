@@ -1,0 +1,136 @@
+{
+	"name": "PL_Master",
+	"properties": {
+		"activities": [
+			{
+				"name": "PL_SourceToDatalake",
+				"type": "ExecutePipeline",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PL_Datalake",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"FileDate": {
+							"value": "@pipeline().parameters.Date",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "PL_DatalakeToSqlserver",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "PL_SourceToDatalake",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PL_DatalakeToSqlserver",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"FileDate": {
+							"value": "@pipeline().parameters.Date",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "PL_RawToStaging",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "PL_DatalakeToSqlserver",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PL_Staging",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "PL_StagingToDimension",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "PL_RawToStaging",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PL_Dimension",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"Date": {
+							"value": "@pipeline().parameters.Date",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "PL_DimensionToFact",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "PL_StagingToDimension",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PL_Fact",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"Date": {
+							"value": "@pipeline().parameters.Date",
+							"type": "Expression"
+						}
+					}
+				}
+			}
+		],
+		"parameters": {
+			"Date": {
+				"type": "string",
+				"defaultValue": "1900-01-01"
+			}
+		},
+		"folder": {
+			"name": "People Lens"
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-10-18T09:44:17Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

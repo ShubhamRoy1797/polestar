@@ -1,0 +1,27 @@
+{
+	"name": "DS_My_Sql_Server",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "LS_My_Sql",
+			"type": "LinkedServiceReference"
+		},
+		"parameters": {
+			"RawTableName": {
+				"type": "string"
+			}
+		},
+		"folder": {
+			"name": "DS_Polestar_HR_Analytics"
+		},
+		"annotations": [],
+		"type": "MySqlTable",
+		"schema": [],
+		"typeProperties": {
+			"tableName": {
+				"value": "@dataset().RawTableName",
+				"type": "Expression"
+			}
+		}
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}

@@ -1,0 +1,35 @@
+{
+	"name": "TG_Polestar_HR_Analytics",
+	"properties": {
+		"annotations": [],
+		"runtimeState": "Stopped",
+		"pipelines": [
+			{
+				"pipelineReference": {
+					"referenceName": "PL_Masters_Incremental",
+					"type": "PipelineReference"
+				}
+			}
+		],
+		"type": "ScheduleTrigger",
+		"typeProperties": {
+			"recurrence": {
+				"frequency": "Month",
+				"interval": 1,
+				"startTime": "2023-06-07T05:41:00",
+				"timeZone": "India Standard Time",
+				"schedule": {
+					"minutes": [
+						0
+					],
+					"hours": [
+						12
+					],
+					"monthDays": [
+						-1
+					]
+				}
+			}
+		}
+	}
+}

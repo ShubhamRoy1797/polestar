@@ -1,0 +1,109 @@
+{
+	"name": "Config_Source_Dataset",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "LS_Internal_SQL_server",
+			"type": "LinkedServiceReference",
+			"parameters": {
+				"DB_Name": "People_Lens"
+			}
+		},
+		"annotations": [],
+		"type": "AzureSqlTable",
+		"schema": [
+			{
+				"name": "Id",
+				"type": "int",
+				"precision": 10
+			},
+			{
+				"name": "Source",
+				"type": "varchar"
+			},
+			{
+				"name": "SourceDatabase",
+				"type": "varchar"
+			},
+			{
+				"name": "SourceSchema",
+				"type": "varchar"
+			},
+			{
+				"name": "SourceTable",
+				"type": "varchar"
+			},
+			{
+				"name": "ADLS_Container",
+				"type": "varchar"
+			},
+			{
+				"name": "FileName",
+				"type": "varchar"
+			},
+			{
+				"name": "FileType",
+				"type": "varchar"
+			},
+			{
+				"name": "Destination",
+				"type": "varchar"
+			},
+			{
+				"name": "DestinationDatabase",
+				"type": "varchar"
+			},
+			{
+				"name": "DestinationSchema",
+				"type": "varchar"
+			},
+			{
+				"name": "DestinationTable",
+				"type": "varchar"
+			},
+			{
+				"name": "LoadType",
+				"type": "varchar"
+			},
+			{
+				"name": "IsCompleted",
+				"type": "int",
+				"precision": 10
+			},
+			{
+				"name": "IsActive",
+				"type": "int",
+				"precision": 10
+			},
+			{
+				"name": "IsManualLoad",
+				"type": "int",
+				"precision": 10
+			},
+			{
+				"name": "IncrementalField",
+				"type": "varchar"
+			},
+			{
+				"name": "StartDate",
+				"type": "datetime",
+				"precision": 23,
+				"scale": 3
+			},
+			{
+				"name": "EndDate",
+				"type": "datetime",
+				"precision": 23,
+				"scale": 3
+			},
+			{
+				"name": "Module",
+				"type": "nvarchar"
+			}
+		],
+		"typeProperties": {
+			"schema": "OperationalTables",
+			"table": "ConfigTable"
+		}
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}

@@ -1,0 +1,12 @@
+{
+	"name": "SnowWorkforce",
+	"type": "Microsoft.DataFactory/factories/linkedservices",
+	"properties": {
+		"annotations": [],
+		"type": "AzureBlobStorage",
+		"typeProperties": {
+			"sasUri": "https://stpeoplelens.blob.core.windows.net/workforce/",
+			"encryptedCredential": "ew0KICAiVmVyc2lvbiI6ICIyMDE3LTExLTMwIiwNCiAgIlByb3RlY3Rpb25Nb2RlIjogIktleSIsDQogICJTZWNyZXRDb250ZW50VHlwZSI6ICJQbGFpbnRleHQiLA0KICAiQ3JlZGVudGlhbElkIjogIkRBVEFGQUNUT1JZQDAxRjhGMTdFLUFDMkEtNDgzOC05M0Y5LUQ3OUEwMDFEMEJDNV8zZjY4YmVhNi03NWVjLTQyMTctOTg5MC05YTBmZGFhMDY4MTIiDQp9"
+		}
+	}
+}
