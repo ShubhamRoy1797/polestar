@@ -1,0 +1,16 @@
+{
+	"name": "LS_My_Sql",
+	"type": "Microsoft.DataFactory/factories/linkedservices",
+	"properties": {
+		"annotations": [],
+		"type": "MySql",
+		"typeProperties": {
+			"connectionString": "server=104.211.178.99;port=3306;database=vegahranalytics;user=reporting;sslmode=1;usesystemtruststore=0;encrypt=true;trustservercertificate=false;connection timeout=30",
+			"encryptedCredential": "eyJDcmVkZW50aWFsSWQiOiJkZmFhZDQ4Mi04ZjUwLTQ1MGQtYjhjMy0xYTg0MDg4ODNmMDgiLCJWZXJzaW9uIjoiMi4wIiwiQ2xhc3NUeXBlIjoiTWljcm9zb2Z0LkRhdGFQcm94eS5Db3JlLkludGVyU2VydmljZURhdGFDb250cmFjdC5DcmVkZW50aWFsU1UwNkNZMTQifQ=="
+		},
+		"connectVia": {
+			"referenceName": "IRSQL",
+			"type": "IntegrationRuntimeReference"
+		}
+	}
+}

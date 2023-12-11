@@ -1,0 +1,9 @@
+{
+	"name": "Adf-PeopleLens",
+	"location": "centralindia",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "efb3f7e3-1434-4469-89bc-72a770dc6c21",
+		"tenantId": "5c979e27-0063-4697-891c-ba85b3eddf83"
+	}
+}

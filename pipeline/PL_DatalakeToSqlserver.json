@@ -1,0 +1,1115 @@
+{
+	"name": "PL_DatalakeToSqlserver",
+	"properties": {
+		"activities": [
+			{
+				"name": "LoadFileList_Full",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": {
+							"value": "@concat('select * from OperationalTables.ConfigTable where IsActive=1 and IsCompleted=0')",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "Config_Source_Dataset",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "ForEach_LoadFiles_Full",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "LoadFileList_Full",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('LoadFileList_Full').output.value",
+						"type": "Expression"
+					},
+					"batchCount": 50,
+					"activities": [
+						{
+							"name": "Datalake_to_SQLServer",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"storeSettings": {
+										"type": "AzureBlobStorageReadSettings",
+										"recursive": false,
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "AzureSqlSink",
+									"preCopyScript": {
+										"value": "@{concat('IF EXISTS(select * from INFORMATION_SCHEMA.TABLES where TABLE_NAME=''',item().DestinationTable,''' and TABLE_SCHEMA=''',item().DestinationSchema,''')  \nTruncate table [',item().DestinationSchema,'].[',item().DestinationTable,'];')}",
+										"type": "Expression"
+									},
+									"writeBehavior": "insert",
+									"sqlWriterUseTableLock": false,
+									"tableOption": "autoCreate",
+									"disableMetricsCollection": false
+								},
+								"enableStaging": false,
+								"parallelCopies": 4,
+								"translator": {
+									"type": "TabularTranslator",
+									"typeConversion": true,
+									"typeConversionSettings": {
+										"allowDataTruncation": true,
+										"treatBooleanAsNumber": false
+									}
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "DS_blob_csv",
+									"type": "DatasetReference",
+									"parameters": {
+										"Container": {
+											"value": "@item().ADLS_Container",
+											"type": "Expression"
+										},
+										"FolderPath": {
+											"value": "@concat(item().ADLS_Container,'/',\nitem().FileName,'/',\nformatDateTime(item().StartDate,'yyyy'),'/',\nformatDateTime(item().StartDate,'MMM'),'/')",
+											"type": "Expression"
+										},
+										"FileName": {
+											"value": "@concat(item().FileName,'.',item().FileType)",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "DS_SQLServer",
+									"type": "DatasetReference",
+									"parameters": {
+										"DatabaseName": {
+											"value": "@item().DestinationDatabase",
+											"type": "Expression"
+										},
+										"SchemaName": {
+											"value": "@item().DestinationSchema",
+											"type": "Expression"
+										},
+										"TableName": {
+											"value": "@item().DestinationTable",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "SQL_LogError_Datalake_to_SQLServer",
+							"type": "SqlServerStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Datalake_to_SQLServer",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"storedProcedureName": "[OperationalTables].[SP_ErrorLogExecutions]",
+								"storedProcedureParameters": {
+									"ErrorDescription": {
+										"value": {
+											"value": "@activity('Datalake_to_SQLServer').error.message\n\n",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Module": {
+										"value": {
+											"value": "@item().Module",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"ObjectName": {
+										"value": {
+											"value": "@concat(activity('Datalake_to_SQLServer').error.target,' - StoredProc - [OperationalTables].[UpdateConfigSettings]')",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineRunID": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Source": {
+										"value": {
+											"value": "@item().Module",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"WorkSpaceName": {
+										"value": {
+											"value": "@pipeline().DataFactory",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Status": {
+										"value": "Failed",
+										"type": "String"
+									}
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "LS_Internal_SQL_server",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DB_Name": "People_Lens"
+								}
+							}
+						},
+						{
+							"name": "Update_IsComplete",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "Datalake_to_SQLServer",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "AzureSqlSource",
+									"sqlReaderQuery": {
+										"value": "@concat('Update OperationalTables.ConfigTable  \n set IsCompleted= 1 \n where Module = ''',item().Module,''' and DestinationTable = ''',\n item().DestinationTable,''' And IsCompleted = 0;\n  select 1 as UpdateFlag;'\n )",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "Config_Source_Dataset",
+									"type": "DatasetReference"
+								},
+								"firstRowOnly": false
+							}
+						},
+						{
+							"name": "Update_IsOneTimeLoad",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "Datalake_to_SQLServer",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "AzureSqlSource",
+									"sqlReaderQuery": {
+										"value": "@concat('Update OperationalTables.ConfigTable  \n set IsOneTimeLoad= 1 \n where IsOneTimeLoad= 0;\n  select 1 as UpdateFlag;'\n )",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "Config_Source_Dataset",
+									"type": "DatasetReference"
+								},
+								"firstRowOnly": false
+							}
+						},
+						{
+							"name": "BlobToArchive",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Datalake_to_SQLServer",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"storeSettings": {
+										"type": "AzureBlobStorageReadSettings",
+										"recursive": false,
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "DelimitedTextSink",
+									"storeSettings": {
+										"type": "AzureBlobStorageWriteSettings"
+									},
+									"formatSettings": {
+										"type": "DelimitedTextWriteSettings",
+										"quoteAllText": true,
+										"fileExtension": ".txt"
+									}
+								},
+								"enableStaging": false,
+								"parallelCopies": 4,
+								"translator": {
+									"type": "TabularTranslator",
+									"typeConversion": true,
+									"typeConversionSettings": {
+										"allowDataTruncation": true,
+										"treatBooleanAsNumber": false
+									}
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "DS_blob_csv",
+									"type": "DatasetReference",
+									"parameters": {
+										"Container": {
+											"value": "@item().ADLS_Container",
+											"type": "Expression"
+										},
+										"FolderPath": {
+											"value": "@concat(item().ADLS_Container,'/',\nitem().FileName,'/',\nformatDateTime(item().StartDate,'yyyy'),'/',\nformatDateTime(item().StartDate,'MMM'),'/')",
+											"type": "Expression"
+										},
+										"FileName": {
+											"value": "@concat(item().FileName,'.',item().FileType)",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "DS_blob_csv",
+									"type": "DatasetReference",
+									"parameters": {
+										"Container": {
+											"value": "@item().ADLS_Container",
+											"type": "Expression"
+										},
+										"FolderPath": {
+											"value": "@concat(item().ADLS_Container,'/','Archive/',\nitem().FileName,'/',\nformatDateTime(item().StartDate,'yyyy'),'/',\nformatDateTime(item().StartDate,'MMM'),'/')",
+											"type": "Expression"
+										},
+										"FileName": {
+											"value": "@concat(item().FileName,'_',item().StartDate,'.',item().FileType)",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "BlobToErrorFiles",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Datalake_to_SQLServer",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"storeSettings": {
+										"type": "AzureBlobStorageReadSettings",
+										"recursive": false,
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "DelimitedTextSink",
+									"storeSettings": {
+										"type": "AzureBlobStorageWriteSettings"
+									},
+									"formatSettings": {
+										"type": "DelimitedTextWriteSettings",
+										"quoteAllText": true,
+										"fileExtension": ".txt"
+									}
+								},
+								"enableStaging": false,
+								"parallelCopies": 4,
+								"translator": {
+									"type": "TabularTranslator",
+									"typeConversion": true,
+									"typeConversionSettings": {
+										"allowDataTruncation": true,
+										"treatBooleanAsNumber": false
+									}
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "DS_blob_csv",
+									"type": "DatasetReference",
+									"parameters": {
+										"Container": {
+											"value": "@item().ADLS_Container",
+											"type": "Expression"
+										},
+										"FolderPath": {
+											"value": "@concat(item().ADLS_Container,'/',\nitem().FileName,'/',\nformatDateTime(item().StartDate,'yyyy'),'/',\nformatDateTime(item().StartDate,'MMM'),'/')",
+											"type": "Expression"
+										},
+										"FileName": {
+											"value": "@concat(item().FileName,'_',item().StartDate,'.',item().FileType)",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "DS_blob_csv",
+									"type": "DatasetReference",
+									"parameters": {
+										"Container": {
+											"value": "@item().ADLS_Container",
+											"type": "Expression"
+										},
+										"FolderPath": {
+											"value": "@concat(item().ADLS_Container,'/','ErrorFiles/',\nitem().FileName,'/',\nformatDateTime(item().StartDate,'yyyy'),'/',\nformatDateTime(item().StartDate,'MMM'),'/')",
+											"type": "Expression"
+										},
+										"FileName": {
+											"value": "@concat(item().FileName,'.',item().FileType)",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "SQL_LogError_BlobToErrorFiles",
+							"type": "SqlServerStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "BlobToErrorFiles",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"storedProcedureName": "[OperationalTables].[SP_ErrorLogExecutions]",
+								"storedProcedureParameters": {
+									"ErrorDescription": {
+										"value": {
+											"value": "@activity('BlobToErrorFiles').error.message\n\n",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Module": {
+										"value": {
+											"value": "@item().Module",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"ObjectName": {
+										"value": {
+											"value": "@concat(activity('BlobToErrorFiles').error.target,' - StoredProc - [OperationalTables].[UpdateConfigSettings]')",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineRunID": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Source": {
+										"value": {
+											"value": "@item().Module",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"WorkSpaceName": {
+										"value": {
+											"value": "@pipeline().DataFactory",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Status": {
+										"value": "Failed",
+										"type": "String"
+									}
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "LS_Internal_SQL_server",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DB_Name": "People_Lens"
+								}
+							}
+						},
+						{
+							"name": "SQL_LogError_Update_IsOneTimeLoad",
+							"type": "SqlServerStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Update_IsOneTimeLoad",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"storedProcedureName": "[OperationalTables].[SP_ErrorLogExecutions]",
+								"storedProcedureParameters": {
+									"ErrorDescription": {
+										"value": {
+											"value": "@activity('Update_IsOneTimeLoad').error.message\n\n",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Module": {
+										"value": {
+											"value": "@item().Module",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"ObjectName": {
+										"value": {
+											"value": "@concat(activity('Update_IsOneTimeLoad').error.target,' - StoredProc - [OperationalTables].[UpdateConfigSettings]')",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineRunID": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Source": {
+										"value": {
+											"value": "@item().Module",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"WorkSpaceName": {
+										"value": {
+											"value": "@pipeline().DataFactory",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Status": {
+										"value": "Failed",
+										"type": "String"
+									}
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "LS_Internal_SQL_server",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DB_Name": "People_Lens"
+								}
+							}
+						},
+						{
+							"name": "SQL_LogError_Update_IsComplete",
+							"type": "SqlServerStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Update_IsComplete",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"storedProcedureName": "[OperationalTables].[SP_ErrorLogExecutions]",
+								"storedProcedureParameters": {
+									"ErrorDescription": {
+										"value": {
+											"value": "@activity('Update_IsComplete').error.message\n\n",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Module": {
+										"value": {
+											"value": "@item().Module",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"ObjectName": {
+										"value": {
+											"value": "@concat(activity('Update_IsComplete').error.target,' - StoredProc - [OperationalTables].[UpdateConfigSettings]')",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineRunID": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Source": {
+										"value": {
+											"value": "@item().Module",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"WorkSpaceName": {
+										"value": {
+											"value": "@pipeline().DataFactory",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Status": {
+										"value": "Failed",
+										"type": "String"
+									}
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "LS_Internal_SQL_server",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DB_Name": "People_Lens"
+								}
+							}
+						},
+						{
+							"name": "SQL_LogError_BlobToArchive",
+							"type": "SqlServerStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "BlobToArchive",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"storedProcedureName": "[OperationalTables].[SP_ErrorLogExecutions]",
+								"storedProcedureParameters": {
+									"ErrorDescription": {
+										"value": {
+											"value": "@activity('BlobToArchive').error.message\n\n",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Module": {
+										"value": {
+											"value": "@item().Module",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"ObjectName": {
+										"value": {
+											"value": "@concat(activity('BlobToArchive').error.target,' - StoredProc - [OperationalTables].[UpdateConfigSettings]')",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineRunID": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Source": {
+										"value": {
+											"value": "@item().Module",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"WorkSpaceName": {
+										"value": {
+											"value": "@pipeline().DataFactory",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Status": {
+										"value": "Failed",
+										"type": "String"
+									}
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "LS_Internal_SQL_server",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DB_Name": "People_Lens"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SQL_LogError_LoadFileList_Full",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "LoadFileList_Full",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[OperationalTables].[SP_ErrorLogExecutions]",
+					"storedProcedureParameters": {
+						"ErrorDescription": {
+							"value": {
+								"value": "@activity('LoadFileList_Full').error.message\n\n",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Module": {
+							"value": "VegaHrAnalytics",
+							"type": "String"
+						},
+						"ObjectName": {
+							"value": {
+								"value": "@concat(activity('LoadFileList_Full').error.target,' - StoredProc - [OperationalTables].[UpdateConfigSettings]')",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineRunID": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Source": {
+							"value": {
+								"value": "@activity('LoadFileList_Full').output.value[0].ADLS_Container",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"WorkSpaceName": {
+							"value": {
+								"value": "@pipeline().DataFactory",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Status": {
+							"value": "Failed",
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_Internal_SQL_server",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DB_Name": "People_Lens"
+					}
+				}
+			},
+			{
+				"name": "SQL_LogError_PL_DatalakeToSQLServer",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "ForEach_LoadFiles_Full",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[OperationalTables].[SP_ErrorLogExecutions]",
+					"storedProcedureParameters": {
+						"ErrorDescription": {
+							"value": null,
+							"type": "String"
+						},
+						"Module": {
+							"value": "VegaHrAnalytics",
+							"type": "String"
+						},
+						"ObjectName": {
+							"value": null,
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineRunID": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Source": {
+							"value": "Datalake",
+							"type": "String"
+						},
+						"WorkSpaceName": {
+							"value": {
+								"value": "@pipeline().DataFactory",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Status": {
+							"value": "Success",
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_Internal_SQL_server",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DB_Name": "People_Lens"
+					}
+				}
+			},
+			{
+				"name": "Reset_IsComplete",
+				"type": "Lookup",
+				"dependsOn": [
+					{
+						"activity": "SQL_LogError_PL_DatalakeToSQLServer",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": {
+							"value": "@concat('Update OperationalTables.ConfigTable  \n set IsCompleted= 0;\n  select 1 as UpdateFlag;'\n )",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "Config_Source_Dataset",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "SQL_LogError_Reset_IsComplete",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Reset_IsComplete",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[OperationalTables].[SP_ErrorLogExecutions]",
+					"storedProcedureParameters": {
+						"ErrorDescription": {
+							"value": {
+								"value": "@activity('Reset_IsComplete').error.message\n\n",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Module": {
+							"value": "VegaHrAnalytics",
+							"type": "String"
+						},
+						"ObjectName": {
+							"value": {
+								"value": "@concat(activity('Reset_IsComplete').error.target)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineRunID": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Source": {
+							"value": {
+								"value": "@activity('Reset_IsComplete').output.value[0].ADLS_Container",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"WorkSpaceName": {
+							"value": {
+								"value": "@pipeline().DataFactory",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Status": {
+							"value": "Failed",
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_Internal_SQL_server",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DB_Name": "People_Lens"
+					}
+				}
+			}
+		],
+		"parameters": {
+			"FileDate": {
+				"type": "string",
+				"defaultValue": "1900-01-01"
+			}
+		},
+		"folder": {
+			"name": "People Lens"
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-10-18T10:49:05Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

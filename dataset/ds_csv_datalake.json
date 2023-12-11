@@ -1,0 +1,25 @@
+{
+	"name": "ds_csv_datalake",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "LS_blob_peoplelens",
+			"type": "LinkedServiceReference"
+		},
+		"annotations": [],
+		"type": "DelimitedText",
+		"typeProperties": {
+			"location": {
+				"type": "AzureBlobStorageLocation",
+				"fileName": "EmployeeMaster",
+				"folderPath": "peoplelens",
+				"container": "stpeoplelens"
+			},
+			"columnDelimiter": ",",
+			"escapeChar": "\\",
+			"firstRowAsHeader": true,
+			"quoteChar": "\""
+		},
+		"schema": []
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}

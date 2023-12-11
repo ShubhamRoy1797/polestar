@@ -1,0 +1,362 @@
+{
+	"name": "PL_Staging",
+	"properties": {
+		"activities": [
+			{
+				"name": "LoadProceduresList",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": {
+							"value": "@{concat('select * from INFORMATION_SCHEMA.ROUTINES where\nRoutine_Type=''Procedure''\tand ROUTINE_SCHEMA=''STG''')}",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_SQLServer",
+						"type": "DatasetReference",
+						"parameters": {
+							"DatabaseName": "People_Lens",
+							"SchemaName": "STG",
+							"TableName": "a"
+						}
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "ForEach_LoadProceduresList",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "LoadProceduresList",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('LoadProceduresList').output.value",
+						"type": "Expression"
+					},
+					"batchCount": 50,
+					"activities": [
+						{
+							"name": "Sp_RawToStg",
+							"type": "SqlServerStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"storedProcedureName": {
+									"value": "@concat(item().ROUTINE_SCHEMA, '.', item().ROUTINE_NAME)",
+									"type": "Expression"
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "LS_Internal_SQL_server",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DB_Name": "People_Lens"
+								}
+							}
+						},
+						{
+							"name": "SQL_LogError_Sp_RawToStg",
+							"type": "SqlServerStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Sp_RawToStg",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"storedProcedureName": "[OperationalTables].[SP_ErrorLogExecutions]",
+								"storedProcedureParameters": {
+									"ErrorDescription": {
+										"value": {
+											"value": "@activity('Sp_RawToStg').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Module": {
+										"value": "vegahranalytics",
+										"type": "String"
+									},
+									"ObjectName": {
+										"value": {
+											"value": "@concat(activity('Sp_RawToStg').error.target)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineRunID": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Source": {
+										"value": "SQL Server",
+										"type": "String"
+									},
+									"WorkSpaceName": {
+										"value": {
+											"value": "@pipeline().DataFactory",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"Status": {
+										"value": "Failed",
+										"type": "String"
+									}
+								}
+							},
+							"linkedServiceName": {
+								"referenceName": "LS_Internal_SQL_server",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DB_Name": "People_Lens"
+								}
+							}
+						},
+						{
+							"name": "AvoidSuccessOnFailure_onFullLoad",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "Sp_RawToStg",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "AzureSqlSource",
+									"sqlReaderQuery": {
+										"value": "Select 1 as AvoidSuccessOnFailure;",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "Config_Source_Dataset",
+									"type": "DatasetReference"
+								},
+								"firstRowOnly": false
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "ForEach_LogError_PL_RawToStg",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "ForEach_LoadProceduresList",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[OperationalTables].[SP_ErrorLogExecutions]",
+					"storedProcedureParameters": {
+						"ErrorDescription": {
+							"value": null,
+							"type": "String"
+						},
+						"Module": {
+							"value": "vegahranalytics",
+							"type": "String"
+						},
+						"ObjectName": {
+							"value": null,
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineRunID": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Source": {
+							"value": "SQL Server",
+							"type": "String"
+						},
+						"WorkSpaceName": {
+							"value": {
+								"value": "@pipeline().DataFactory",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Status": {
+							"value": "success",
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_Internal_SQL_server",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DB_Name": "People_Lens"
+					}
+				}
+			},
+			{
+				"name": "Lookup_LogError_LoadProceduresList",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "LoadProceduresList",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[OperationalTables].[SP_ErrorLogExecutions]",
+					"storedProcedureParameters": {
+						"ErrorDescription": {
+							"value": {
+								"value": "@activity('LoadProceduresList').error.message",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Module": {
+							"value": "vegahranalytics",
+							"type": "String"
+						},
+						"ObjectName": {
+							"value": {
+								"value": "@concat(activity('LoadProceduresList').error.target)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineRunID": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Source": {
+							"value": "SQL Server",
+							"type": "String"
+						},
+						"WorkSpaceName": {
+							"value": {
+								"value": "@pipeline().DataFactory",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Status": {
+							"value": "Failed",
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_Internal_SQL_server",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DB_Name": "People_Lens"
+					}
+				}
+			}
+		],
+		"folder": {
+			"name": "People Lens"
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-10-18T07:52:33Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

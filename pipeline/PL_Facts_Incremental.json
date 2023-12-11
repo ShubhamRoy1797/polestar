@@ -1,0 +1,268 @@
+{
+	"name": "PL_Facts_Incremental",
+	"properties": {
+		"activities": [
+			{
+				"name": "Get_All_Sp_Names_Level 1",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": "select Sp_Name from [Audit].[AllSpName]\nwhere Sp_Type='Fact' and Is_Active=1 and Level=1",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_Sink_Sql_Polestar",
+						"type": "DatasetReference",
+						"parameters": {
+							"Schema_Name": "Audit",
+							"Table_Name": "AllSpName"
+						}
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "Execute Pipeline Fact Level 1",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Get_All_Sp_Names_Level 1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PL_Facts_Base_Incremental",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": false,
+					"parameters": {
+						"PL_Param_Sp_Name": {
+							"value": "@activity('Get_All_Sp_Names_Level 1').output.value",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Get_All_Sp_Names_Level 2",
+				"type": "Lookup",
+				"dependsOn": [
+					{
+						"activity": "Execute Pipeline Fact Level 1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": "select Sp_Name from [Audit].[AllSpName]\nwhere Sp_Type='Fact' and Is_Active=1 and Level=2",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_Sink_Sql_Polestar",
+						"type": "DatasetReference",
+						"parameters": {
+							"Schema_Name": "Audit",
+							"Table_Name": "AllSpName"
+						}
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "Execute Pipeline Fact Level 2",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Get_All_Sp_Names_Level 2",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PL_Facts_Base_Incremental",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": false,
+					"parameters": {
+						"PL_Param_Sp_Name": {
+							"value": "@activity('Get_All_Sp_Names_Level 2').output.value",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Pipeline_Log_On_Failure",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Execute Pipeline Fact Level 2",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[Audit].[Sp_PipelineExecutionLog]",
+					"storedProcedureParameters": {
+						"DataFactory_Name": {
+							"value": {
+								"value": "@pipeline().DataFactory",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"End_Time": {
+							"value": {
+								"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+								"type": "Expression"
+							},
+							"type": "DateTime"
+						},
+						"Error": {
+							"value": "Pipeline PL_Fact has Failed for Level-2. Check Master log for more details.",
+							"type": "String"
+						},
+						"Pipeline_Name": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Start_Time": {
+							"value": {
+								"value": "@convertTimeZone(pipeline().TriggerTime,'UTC','India Standard Time')\n\n",
+								"type": "Expression"
+							},
+							"type": "DateTime"
+						},
+						"Status": {
+							"value": "Failed",
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_SQL_Workforce_Insight",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"Database_Name": "People_Lens"
+					}
+				}
+			},
+			{
+				"name": "Pipeline_Log_On_Failure_Level_1",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Execute Pipeline Fact Level 1",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[Audit].[Sp_PipelineExecutionLog]",
+					"storedProcedureParameters": {
+						"DataFactory_Name": {
+							"value": {
+								"value": "@pipeline().DataFactory",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"End_Time": {
+							"value": {
+								"value": "@convertTimeZone(utcNow(),'UTC','India Standard Time')",
+								"type": "Expression"
+							},
+							"type": "DateTime"
+						},
+						"Error": {
+							"value": "Pipeline PL_Fact has Failed for Level -1. Check Master log for more details.",
+							"type": "String"
+						},
+						"Pipeline_Name": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Start_Time": {
+							"value": {
+								"value": "@convertTimeZone(pipeline().TriggerTime,'UTC','India Standard Time')\n\n",
+								"type": "Expression"
+							},
+							"type": "DateTime"
+						},
+						"Status": {
+							"value": "Failed",
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_SQL_Workforce_Insight",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"Database_Name": "People_Lens"
+					}
+				}
+			}
+		],
+		"folder": {
+			"name": "PL_Polestar_HR_Analytics/PL_Facts"
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-07-17T09:58:45Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}
